@@ -3,14 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Visual Rhythm Game</title>
+  <title>ASDF Vertical Rhythm Game</title>
   <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
     body {
       margin: 0;
       padding: 0;
-      background-color: #121212;
+      background-color: #0b0e14;
       color: #ffffff;
-      font-family: sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -19,136 +24,333 @@
       overflow: hidden;
       touch-action: manipulation;
     }
-    #score-board {
-      font-size: 24px;
-      margin-bottom: 10px;
-    }
-    #game-canvas {
-      border: 2px solid #333;
+    #game-container {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      height: 100vh;
+      max-height: 750px;
+      background: #121721;
+      border: 2px solid #2a3447;
       border-radius: 12px;
-      background-color: #1e1e1e;
-      max-width: 90vw;
-      max-height: 60vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 0 30px rgba(0, 229, 255, 0.15);
     }
-    #instructions {
-      margin-top: 15px;
+    #header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 15px;
+      background: #1a2232;
+      border-bottom: 1px solid #2a3447;
+      z-index: 10;
+    }
+    .stat-box {
       font-size: 14px;
-      color: #aaa;
-      text-align: center;
+      color: #8a99ad;
+    }
+    .stat-value {
+      font-size: 18px;
+      font-weight: bold;
+      color: #00e5ff;
+    }
+    #speed-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn {
+      background: #2a3447;
+      color: #fff;
+      border: none;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn:active {
+      background: #00e5ff;
+      color: #000;
+    }
+    #canvas-container {
+      position: relative;
+      flex: 1;
+      width: 100%;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #touch-controls {
+      display: flex;
+      height: 100px;
+      background: #151c28;
+      border-top: 2px solid #2a3447;
+      z-index: 10;
+    }
+    .touch-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-right: 1px solid #2a3447;
+      background: linear-gradient(to bottom, #1d2636, #151c28);
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 20px;
+      color: #00e5ff;
+    }
+    .touch-btn:last-child {
+      border-right: none;
+    }
+    .touch-btn:active, .touch-btn.active {
+      background: linear-gradient(to bottom, #00e5ff, #0088cc);
+      color: #fff;
+    }
+    .touch-btn span {
+      font-size: 11px;
+      color: #7a8b9e;
+      margin-top: 2px;
     }
   </style>
 </head>
 <body>
 
-  <div id="score-board">SCORE: <span id="score">0</span></div>
-  <canvas id="game-canvas" width="400" height="400"></canvas>
-  <div id="instructions">
-    PC: [スペースキー] または クリック<br>
-    スマホ: 画面をタップ
+  <div id="game-container">
+    <div id="header">
+      <div class="stat-box">SCORE: <span id="score" class="stat-value">0</span></div>
+      <div class="stat-box">COMBO: <span id="combo" class="stat-value">0</span></div>
+      <div id="speed-controls">
+        <span class="stat-box">SPEED:</span>
+        <button class="btn" id="speed-down">-</button>
+        <span id="speed-val" class="stat-value">5</span>
+        <button class="btn" id="speed-up">+</button>
+      </div>
+    </div>
+
+    <div id="canvas-container">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="touch-controls">
+      <div class="touch-btn" id="btn-0">A<span>LANE 1</span></div>
+      <div class="touch-btn" id="btn-1">S<span>LANE 2</span></div>
+      <div class="touch-btn" id="btn-2">D<span>LANE 3</span></div>
+      <div class="touch-btn" id="btn-3">F<span>LANE 4</span></div>
+    </div>
   </div>
 
   <script>
-    const canvas = document.getElementById('game-canvas');
+    const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
-    const scoreEl = document.getElementById('score');
+    const container = document.getElementById('canvas-container');
 
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    const targetRadius = 40; // 判定リングの半径
+    const scoreEl = document.getElementById('score');
+    const comboEl = document.getElementById('combo');
+    const speedValEl = document.getElementById('speed-val');
+
+    const keyMap = { 'KeyA': 0, 'KeyS': 1, 'KeyD': 2, 'KeyF': 3 };
+    const laneKeys = ['A', 'S', 'D', 'F'];
+    const laneColors = ['#ff3366', '#00e5ff', '#ffcc00', '#00ff66'];
 
     let score = 0;
+    let combo = 0;
+    let noteSpeed = 5;
     let notes = [];
-    let feedbackText = "";
-    let feedbackColor = "#fff";
-    let feedbackTimer = 0;
+    let particles = [];
+    let feedback = { text: '', color: '', timer: 0 };
+    let lanePressed = [false, false, false, false];
 
-    // ノーツの生成（定期的）
+    function resizeCanvas() {
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // ノーツ自動生成
     setInterval(() => {
-      notes.push({
-        radius: 180, // 外側からスタート
-        speed: 2.5   // 縮むスピード
-      });
-    }, 1200);
+      const lane = Math.floor(Math.random() * 4);
+      notes.push({ lane: lane, y: -20, hit: false });
+    }, 450);
 
-    // アクション入力時の処理
-    function handleInput(e) {
-      if (e) e.preventDefault();
+    function triggerHit(lane) {
+      lanePressed[lane] = true;
+      setTimeout(() => lanePressed[lane] = false, 100);
 
-      // スマホの振動機能（対応端末のみ）
-      if (navigator.vibrate) {
-        navigator.vibrate(40);
+      if (navigator.vibrate) navigator.vibrate(30);
+
+      const targetY = canvas.height - 40;
+      let hitFound = false;
+
+      for (let i = 0; i < notes.length; i++) {
+        const note = notes[i];
+        if (note.lane === lane && !note.hit) {
+          const diff = Math.abs(note.y - targetY);
+          if (diff < 60) {
+            note.hit = true;
+            hitFound = true;
+            
+            if (diff < 18) {
+              score += 100;
+              combo++;
+              showFeedback('PERFECT', '#00ffcc');
+              createParticles(lane, targetY, laneColors[lane]);
+            } else if (diff < 35) {
+              score += 50;
+              combo++;
+              showFeedback('GREAT', '#ffcc00');
+              createParticles(lane, targetY, laneColors[lane]);
+            } else {
+              combo = 0;
+              showFeedback('BAD', '#ff3366');
+            }
+            notes.splice(i, 1);
+            break;
+          }
+        }
       }
 
-      if (notes.length === 0) return;
-
-      // 一番中央に近いノーツを取得
-      const closestNote = notes[0];
-      const diff = Math.abs(closestNote.radius - targetRadius);
-
-      if (diff < 12) {
-        score += 100;
-        showFeedback("PERFECT!!", "#00ffcc");
-        notes.shift();
-      } else if (diff < 25) {
-        score += 50;
-        showFeedback("GOOD!", "#ffcc00");
-        notes.shift();
-      } else if (diff < 40) {
-        showFeedback("MISS", "#ff3366");
-        notes.shift();
+      if (!hitFound) {
+        combo = 0;
       }
+
       scoreEl.textContent = score;
+      comboEl.textContent = combo;
     }
 
     function showFeedback(text, color) {
-      feedbackText = text;
-      feedbackColor = color;
-      feedbackTimer = 20; // 20フレーム表示
+      feedback = { text, color, timer: 20 };
     }
 
-    // イベントリスナー（キーボード・タッチ・クリック）
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space') handleInput(e);
-    });
-    canvas.addEventListener('touchstart', handleInput, { passive: false });
-    canvas.addEventListener('mousedown', handleInput);
+    function createParticles(lane, y, color) {
+      const laneWidth = canvas.width / 4;
+      const x = lane * laneWidth + laneWidth / 2;
+      for (let i = 0; i < 12; i++) {
+        particles.push({
+          x, y,
+          vx: (Math.random() - 0.5) * 8,
+          vy: (Math.random() - 0.5) * 8,
+          life: 1.0,
+          color
+        });
+      }
+    }
 
-    // ゲームループ（描画更新）
+    // イベント登録（ASDFキー）
+    window.addEventListener('keydown', (e) => {
+      if (keyMap.hasOwnProperty(e.code) && !e.repeat) {
+        const lane = keyMap[e.code];
+        triggerHit(lane);
+        document.getElementById(`btn-${lane}`).classList.add('active');
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (keyMap.hasOwnProperty(e.code)) {
+        const lane = keyMap[e.code];
+        document.getElementById(`btn-${lane}`).classList.remove('active');
+      }
+    });
+
+    // タッチ操作
+    [0, 1, 2, 3].forEach(lane => {
+      const btn = document.getElementById(`btn-${lane}`);
+      btn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        triggerHit(lane);
+      });
+      btn.addEventListener('mousedown', () => triggerHit(lane));
+    });
+
+    // 速度変更
+    document.getElementById('speed-up').onclick = () => {
+      if (noteSpeed < 12) noteSpeed++;
+      speedValEl.textContent = noteSpeed;
+    };
+    document.getElementById('speed-down').onclick = () => {
+      if (noteSpeed > 2) noteSpeed--;
+      speedValEl.textContent = noteSpeed;
+    };
+
+    // メイン描画ループ
     function update() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const laneWidth = canvas.width / 4;
+      const targetY = canvas.height - 40;
 
-      // 1. 判定リングの描画
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, targetRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = '#00e5ff';
-      ctx.lineWidth = 4;
-      ctx.stroke();
+      // レーン背景 & 枠線
+      for (let i = 0; i < 4; i++) {
+        ctx.strokeStyle = '#2a3447';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(i * laneWidth, 0, laneWidth, canvas.height);
 
-      // 2. ノーツの更新と描画
-      for (let i = notes.length - 1; i >= 0; i--) {
-        let note = notes[i];
-        note.radius -= note.speed;
+        if (lanePressed[i]) {
+          ctx.fillStyle = 'rgba(0, 229, 255, 0.15)';
+          ctx.fillRect(i * laneWidth, 0, laneWidth, canvas.height);
+        }
 
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, Math.max(0, note.radius), 0, Math.PI * 2);
-        ctx.strokeStyle = '#ffffff';
+        // 判定枠
+        ctx.strokeStyle = laneColors[i];
         ctx.lineWidth = 3;
-        ctx.stroke();
+        ctx.strokeRect(i * laneWidth + 6, targetY - 15, laneWidth - 12, 30);
+      }
 
-        // 中央を通り過ぎたらMISS
-        if (note.radius < targetRadius - 25) {
-          showFeedback("MISS", "#ff3366");
+      // ノーツ移動＆描画
+      for (let i = notes.length - 1; i >= 0; i--) {
+        const note = notes[i];
+        note.y += noteSpeed;
+
+        const x = note.lane * laneWidth + 8;
+        const w = laneWidth - 16;
+        const h = 16;
+
+        ctx.fillStyle = laneColors[note.lane];
+        ctx.shadowColor = laneColors[note.lane];
+        ctx.shadowBlur = 10;
+        ctx.fillRect(x, note.y - h / 2, w, h);
+        ctx.shadowBlur = 0;
+
+        // 通り過ぎたらMISS
+        if (note.y > canvas.height + 20) {
+          combo = 0;
+          comboEl.textContent = combo;
+          showFeedback('MISS', '#ff3366');
           notes.splice(i, 1);
         }
       }
 
-      // 3. 判定フィードバックの表示
-      if (feedbackTimer > 0) {
-        ctx.font = 'bold 24px sans-serif';
-        ctx.fillStyle = feedbackColor;
+      // パーティクル更新
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.05;
+
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+      }
+
+      // フィードバックテキスト
+      if (feedback.timer > 0) {
+        ctx.font = '700 28px sans-serif';
+        ctx.fillStyle = feedback.color;
         ctx.textAlign = 'center';
-        ctx.fillText(feedbackText, centerX, centerY + 8);
-        feedbackTimer--;
+        ctx.fillText(feedback.text, canvas.width / 2, canvas.height / 2);
+        feedback.timer--;
       }
 
       requestAnimationFrame(update);
