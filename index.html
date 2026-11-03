@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Visual Rhythm Game</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #121212;
+      color: #ffffff;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+    #score-board {
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+    #game-canvas {
+      border: 2px solid #333;
+      border-radius: 12px;
+      background-color: #1e1e1e;
+      max-width: 90vw;
+      max-height: 60vh;
+    }
+    #instructions {
+      margin-top: 15px;
+      font-size: 14px;
+      color: #aaa;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="score-board">SCORE: <span id="score">0</span></div>
+  <canvas id="game-canvas" width="400" height="400"></canvas>
+  <div id="instructions">
+    PC: [スペースキー] または クリック<br>
+    スマホ: 画面をタップ
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const targetRadius = 40; // 判定リングの半径
+
+    let score = 0;
+    let notes = [];
+    let feedbackText = "";
+    let feedbackColor = "#fff";
+    let feedbackTimer = 0;
+
+    // ノーツの生成（定期的）
+    setInterval(() => {
+      notes.push({
+        radius: 180, // 外側からスタート
+        speed: 2.5   // 縮むスピード
+      });
+    }, 1200);
+
+    // アクション入力時の処理
+    function handleInput(e) {
+      if (e) e.preventDefault();
+
+      // スマホの振動機能（対応端末のみ）
+      if (navigator.vibrate) {
+        navigator.vibrate(40);
+      }
+
+      if (notes.length === 0) return;
+
+      // 一番中央に近いノーツを取得
+      const closestNote = notes[0];
+      const diff = Math.abs(closestNote.radius - targetRadius);
+
+      if (diff < 12) {
+        score += 100;
+        showFeedback("PERFECT!!", "#00ffcc");
+        notes.shift();
+      } else if (diff < 25) {
+        score += 50;
+        showFeedback("GOOD!", "#ffcc00");
+        notes.shift();
+      } else if (diff < 40) {
+        showFeedback("MISS", "#ff3366");
+        notes.shift();
+      }
+      scoreEl.textContent = score;
+    }
+
+    function showFeedback(text, color) {
+      feedbackText = text;
+      feedbackColor = color;
+      feedbackTimer = 20; // 20フレーム表示
+    }
+
+    // イベントリスナー（キーボード・タッチ・クリック）
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') handleInput(e);
+    });
+    canvas.addEventListener('touchstart', handleInput, { passive: false });
+    canvas.addEventListener('mousedown', handleInput);
+
+    // ゲームループ（描画更新）
+    function update() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 1. 判定リングの描画
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, targetRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      // 2. ノーツの更新と描画
+      for (let i = notes.length - 1; i >= 0; i--) {
+        let note = notes[i];
+        note.radius -= note.speed;
+
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, Math.max(0, note.radius), 0, Math.PI * 2);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // 中央を通り過ぎたらMISS
+        if (note.radius < targetRadius - 25) {
+          showFeedback("MISS", "#ff3366");
+          notes.splice(i, 1);
+        }
+      }
+
+      // 3. 判定フィードバックの表示
+      if (feedbackTimer > 0) {
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillStyle = feedbackColor;
+        ctx.textAlign = 'center';
+        ctx.fillText(feedbackText, centerX, centerY + 8);
+        feedbackTimer--;
+      }
+
+      requestAnimationFrame(update);
+    }
+
+    update();
+  </script>
+</body>
+</html>
